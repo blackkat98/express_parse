@@ -1,44 +1,62 @@
-var createError = require('http-errors')
-var express = require('express')
-var path = require('path')
-var cookieParser = require('cookie-parser')
-var logger = require('morgan')
+require('./config/env')
+require('./modules/parseDashboard')
 
-var indexRouter = require('./routes/index')
-var usersRouter = require('./routes/users')
+var express = require('express')
+var httpLib = require('http')
+var ParseServerModel = require('parse-server').ParseServer
+var parseConfig = require('./config/parse')
+
+var bodyParser = require('body-parser') // non-multipart data middleware
+var multipartParser = require('multer')() // multipart data middleware
+
+var i18next = require('i18next')
+var i18nextMiddleware = require('i18next-http-middleware')
+var i18nBackend = require('i18next-fs-backend')
 
 var app = express()
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'))
-app.set('view engine', 'pug')
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({
+    extended: true,
+}))
 
-app.use(logger('dev'))
-app.use(express.json())
-app.use(express.urlencoded({ extended: false }))
-app.use(cookieParser())
-app.use(express.static(path.join(__dirname, 'public')))
+i18next
+    .use(i18nextMiddleware.LanguageDetector)
+    .use(i18nBackend)
+    .init({
+        initImmediate: false,
+        debug: true,
+        detection: {
+            order: ['querystring', 'cookie'],
+            caches: ['cookie'],
+        },
+        backend: {
+            loadPath: __dirname + '/resources/locales/{{lng}}/{{ns}}.json',
+            // loadPath: __dirname + '/resources/locales/{{lng}}.json',
+            ident: 4,
+        },
+        lng: 'en',
+        preload: ['en', 'vi'],
+        saveMissing: false,
+        fallbackLng: ['en'],
+        ns: [
+            'auth',
+        ],
+        defaultNS: [
+            'auth',
+        ],
+    }, (err, t) => {
+        console.log('I18n setup fallback')
+    })
 
-app.use('/', indexRouter)
-app.use('/users', usersRouter)
+app.use(i18nextMiddleware.handle(i18next))
 
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404))
-})
+var parseServer = new ParseServerModel(parseConfig.server)
+app.use(parseConfig.server.mount, parseServer)
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message
-  res.locals.error = req.app.get('env') === 'development' ? err : {}
+var httpServer = httpLib.createServer(app)
+httpServer.listen(parseConfig.server.port)
 
-  // render the error page
-  res.status(err.status || 500)
-  res.render('error')
-})
+ParseServerModel.createLiveQueryServer(httpServer)
 
-require('./modules/parseServer')
-require('./modules/parseDashboard')
-
-// module.exports = app
+require('./routes/api/root')(app, multipartParser)
