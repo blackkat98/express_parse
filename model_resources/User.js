@@ -8,6 +8,7 @@ class UserResource extends Resource
             username: user.username,
             name: user.name || null,
             email: user.email || null,
+            lang: user.lang || 'en',
             oauthType: user.oauthType || null,
             oauthId: user.oauthId || null,
             createdAt: user.createdAt,
